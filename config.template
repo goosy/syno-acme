@@ -1,4 +1,5 @@
 # 有无 syncthing 需要更新证书
+# 有的话 export SYNCTHING=true
 export SYNCTHING=false
 # 有的话，给出 API_KEY
 export SYNCTHING_API_KEY=InsertYourAPIKeyHere

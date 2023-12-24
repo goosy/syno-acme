@@ -16,7 +16,7 @@ DATE_TIME=$(date +%Y%m%d%H%M%S)
 # base crt path
 CRT_BASE_PATH=/usr/syno/etc/certificate
 PKG_CRT_BASE_PATH=/usr/local/etc/certificate
-ACME_BIN_PATH=~/.acme.sh
+ACME_BIN_PATH=${BASE_ROOT}/acme.sh
 ACME_CRT_PATH=~/certificates
 TEMP_PATH=~/temp
 ARCHIEV_PATH="${CRT_BASE_PATH}/_archive"
@@ -34,18 +34,24 @@ fi
 if [ ! -d ${ACME_CRT_PATH} ]; then
   mkdir ${ACME_CRT_PATH}
 fi
-has_config=false
-if [ -f ${ACME_BIN_PATH}/config ]; then
+
+if [ -f ${BASE_ROOT}/config ]; then
   has_config=true
-  source ${ACME_BIN_PATH}/config
+  source ${BASE_ROOT}/config
+elif [ "$1" != "setup" ] && [ "$1" != "config" ]; then
+  echo "There is no config file, please run \`cert-up.sh edit_config\` first"
+  exit 0
 else
   has_config=false
-  SYNCTHING=false
 fi
-do_register=false
-if [ "$has_config" = true ] && [ ! -f ${ACME_BIN_PATH}/registed ]; then
-  do_register=true
-fi
+
+edit_config() {
+  if ! $has_config; then
+    cp ${BASE_ROOT}/config.template ${BASE_ROOT}/config
+  fi
+  vim ${BASE_ROOT}/config
+  echo "please check ${BASE_ROOT}/config file, if correct, run \`cert-up.sh setup\` again to complete setup."
+}
 
 backup_cert() {
   echo 'begin backup_cert'
@@ -86,13 +92,7 @@ install_acme() {
   #fi
   #SRC_NAME=acme.sh
   echo 'begin installing acme.sh tool...'
-  if [ "$has_config" = true ]; then
-    emailpara="--accountemail \"${EMAIL}\""
-  else
-    cp ${BASE_ROOT}/config ${ACME_BIN_PATH}
-    emailpara=''
-    echo !! please fill out the ${BASE_ROOT}/config and then run \"$0 update\"
-  fi
+  emailpara="--accountemail \"${EMAIL}\""
   cd ${SRC_NAME}
   ./acme.sh --install --nocron --home ${ACME_BIN_PATH} --cert-home ${ACME_CRT_PATH} ${emailpara}
   echo 'done install_acme'
@@ -101,35 +101,28 @@ install_acme() {
 }
 
 register_account() {
+  echo 'begin register email'
   cd ${ACME_BIN_PATH}
-  ${ACME_BIN_PATH}/acme.sh --register-account -m "${EMAIL}"
+  ./acme.sh --register-account -m "${EMAIL}"
   if [ $? -ne 0 ]; then
     echo 'register_account failed!!'
     return 1
   fi
-  touch ${ACME_BIN_PATH}/registed
   echo 'done register_account'
   return 0
 }
 
 generate_cert() {
-  if [ "$do_register" = true ]; then
-    # first register account
-    register_account
-    if [ $? -ne 0 ]; then
-      exit 1
-    fi
-  fi
   echo 'begin generate_cert'
   cd ${ACME_BIN_PATH}
-  source "${ACME_BIN_PATH}/acme.sh.env"
+  source acme.sh.env
   echo 'begin updating default cert by acme.sh tool'
-  ${ACME_BIN_PATH}/acme.sh --force --log --issue --dns ${DNS} --dnssleep ${DNS_SLEEP} -d "${DOMAIN}" -d "*.${DOMAIN}"
+  ./acme.sh --force --log --issue --dns ${DNS} --dnssleep ${DNS_SLEEP} -d "${DOMAIN}" -d "*.${DOMAIN}"
   #   --cert-file ${ACME_CRT_PATH}/cert.pem \
   #   --key-file ${ACME_CRT_PATH}/privkey.pem \
   #   --ca-file ${ACME_CRT_PATH}/chain.pem \
   #   --fullchain-file ${ACME_CRT_PATH}/fullchain.pem
-  if [ $? -eq 0 ] && [ -s ${ACME_CRT_PATH}/${DOMAIN}/ca.cer ]; then
+  if [ $? -eq 0 ] && [ -s ${ACME_CRT_PATH}/${DOMAIN}_ecc/ca.cer ]; then
     echo 'done generate_cert'
     return 0
   else
@@ -156,11 +149,11 @@ update_service() {
     exit 1
   fi
 
-  if [ -e ${ACME_CRT_PATH}/${DOMAIN}/ca.cer ] && [ -s ${ACME_CRT_PATH}/${DOMAIN}/ca.cer ]; then
-    sudo cp -v ${ACME_CRT_PATH}/${DOMAIN}/ca.cer ${CRT_PATH}/chain.pem
-    sudo cp -v ${ACME_CRT_PATH}/${DOMAIN}/fullchain.cer ${CRT_PATH}/fullchain.pem
-    sudo cp -v ${ACME_CRT_PATH}/${DOMAIN}/${DOMAIN}.cer ${CRT_PATH}/cert.pem
-    sudo cp -v ${ACME_CRT_PATH}/${DOMAIN}/${DOMAIN}.key ${CRT_PATH}/privkey.pem
+  if [ -e ${ACME_CRT_PATH}/${DOMAIN}_ecc/ca.cer ] && [ -s ${ACME_CRT_PATH}/${DOMAIN}_ecc/ca.cer ]; then
+    sudo cp -v ${ACME_CRT_PATH}/${DOMAIN}_ecc/ca.cer ${CRT_PATH}/chain.pem
+    sudo cp -v ${ACME_CRT_PATH}/${DOMAIN}_ecc/fullchain.cer ${CRT_PATH}/fullchain.pem
+    sudo cp -v ${ACME_CRT_PATH}/${DOMAIN}_ecc/${DOMAIN}.cer ${CRT_PATH}/cert.pem
+    sudo cp -v ${ACME_CRT_PATH}/${DOMAIN}_ecc/${DOMAIN}.key ${CRT_PATH}/privkey.pem
     for service in "${services[@]}"; do
       display_name=$(echo "$service" | base64 --decode | jq -r '.display_name')
       isPkg=$(echo "$service" | base64 --decode | jq -r '.isPkg')
@@ -234,33 +227,45 @@ revert_cert() {
 }
 
 case "$1" in
-install)
-  echo "------ install script ------"
+config)
+  echo "------ config ------"
+  edit_config
+  ;;
+
+setup)
+  echo "------ setup ------"
+  if $has_config; then
+    install_acme
+    register_account
+  else
+    edit_config
+  fi
+  ;;
+
+uptools)
+  echo "------ update script ------"
   install_acme
   ;;
 
 backup_cert)
-  echo "------ backup_cert ------"
+  echo "------ backup certificate ------"
   backup_cert
   ;;
 
-generate_cert)
-  echo "------ generate_cert ------"
+update_cert)
+  echo "------ update certificate ------"
+  # backup_cert
   generate_cert
   ;;
 
 update_service)
-  echo "------ update_service ------"
+  echo "------ update service ------"
   update_service
-  ;;
-
-reload_webservice)
-  echo "------ reload_webservice ------"
   reload_webservice
   ;;
 
 update)
-  echo '------ update_cert ------'
+  echo '------ update certificate & service ------'
   backup_cert
   generate_cert
   update_service
@@ -268,7 +273,7 @@ update)
   ;;
 
 register)
-  echo "------ register_account ------"
+  echo "------ register account ------"
   register_account
   ;;
 
@@ -278,9 +283,9 @@ revert)
   ;;
 
 *)
-  echo "Usage: $0 {install|update|register|revert}"
+  echo "Usage: $0 {setup|update}"
   echo or
-  echo "Usage: $0 {install|backup_cert|generate_cert|update_service|reload_webservice|register|revert}"
+  echo "Usage: $0 {config|uptools|register|backup_cert|update_cert|update_service|revert}"
   exit 1
   ;;
 esac
