@@ -22,9 +22,10 @@ cd syno-acme
 chmod 700 ./cert-up.sh
 
 # 2. 填写配置文件设置环境变量
-# 提示你修改 ~/.acme.sh/config 文件
+# 通过 `-c|--config` 指定配置文件目录，比如为 config_dir
+# 使用 config 命令自动建立默认 config_dir/config 文件，并打开供你修改
 # 填写你的电子邮箱、域名、域名服务商、是否也更新 syncthing 证书等等
-./cert-up.sh config
+./cert-up.sh -c config_dir config
 
 # 3. 更新脚本
 ./cert-up.sh setup
@@ -72,11 +73,11 @@ chmod 700 ./cert-up.sh
 
 远程主机：
 
-- 远程主机初次安装执行1~3
-- 远程主机更新证书时执行4.1
+- 远程主机初次安装执行 1, 2, 3
+- 远程主机更新证书时执行 4.1
 
 本地NAS：
 
-- 本地NAS初次安装执行1~2（其中2仅填写是否有syncthing）
+- 本地NAS初次安装执行 1, 2（其中2仅填写是否有syncthing）
 - 将远程的证书目录复制本地NAS对应目录中 (~/certificates/)
-- 本地NAS更新服务，执行4.2
+- 本地NAS更新服务，执行 4.2

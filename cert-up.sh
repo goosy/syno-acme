@@ -16,11 +16,15 @@ DATE_TIME=$(date +%Y%m%d%H%M%S)
 # base crt path
 CRT_BASE_PATH=/usr/syno/etc/certificate
 PKG_CRT_BASE_PATH=/usr/local/etc/certificate
-ACME_BIN_PATH=${BASE_ROOT}/acme.sh
+ACME_BIN_PATH="${BASE_ROOT}/acme.sh"
+ACME_CONF_PATH=""
+CONFIG_FILE=""
+BASE_CONF="${BASE_ROOT}/SYNO-ACME.config"
 ACME_CRT_PATH=~/certificates
 TEMP_PATH=~/temp
 ARCHIEV_PATH="${CRT_BASE_PATH}/_archive"
 INFO_FILE_PATH="${ARCHIEV_PATH}/INFO"
+DNS_SLEEP=60
 
 SYNCTHING_PATH=/volume1/@appdata/syncthing
 # Before DSM 7.0, use the following instead:
@@ -35,22 +39,38 @@ if [ ! -d ${ACME_CRT_PATH} ]; then
   mkdir ${ACME_CRT_PATH}
 fi
 
-if [ -f ${BASE_ROOT}/config ]; then
-  has_config=true
-  source ${BASE_ROOT}/config
-elif [ "$1" != "setup" ] && [ "$1" != "config" ]; then
-  echo "There is no config file, please run \`cert-up.sh edit_config\` first"
-  exit 0
-else
-  has_config=false
-fi
+set_config() {
+  if [ -n "$config_dir" ]; then
+    echo "export ACME_CONF_PATH=${BASE_ROOT}/${config_dir}" > "${BASE_CONF}"
+  fi
+  if [ -f ${BASE_CONF} ]; then
+    . ${BASE_CONF}
+    CONFIG_FILE=${ACME_CONF_PATH}/config
+    if [ -f ${CONFIG_FILE} ]; then
+      . ${CONFIG_FILE}
+      has_config=true
+    elif [ $command != "config" ]; then
+      echo "The config file is not initialized, please run \`cert-up.sh config\` first"
+      echo "The above operation only needs to be run once"
+      echo "and the program will remember the configuration."
+      exit 10
+    fi
+  else
+      echo "There are no saved config."
+      echo "Please provide \`-c|--config config_dir\` to set new config."
+      echo "The above operation only needs to be run once"
+      echo "and the program will remember the configuration."
+      exit 10
+  fi
+}
 
 edit_config() {
-  if ! $has_config; then
-    cp ${BASE_ROOT}/config.template ${BASE_ROOT}/config
+  if [ ! -f ${CONFIG_FILE} ]; then
+    mkdir -p ${ACME_CONF_PATH}
+    cp ${BASE_ROOT}/config.template ${CONFIG_FILE}
   fi
-  vim ${BASE_ROOT}/config
-  echo "please check ${BASE_ROOT}/config file, if correct, run \`cert-up.sh setup\` again to complete setup."
+  vim ${CONFIG_FILE}
+  echo "please check ${CONFIG_FILE} file, if correct, run \`cert-up.sh setup\` again to complete setup."
 }
 
 backup_cert() {
@@ -94,16 +114,20 @@ install_acme() {
   echo 'begin installing acme.sh tool...'
   emailpara="--accountemail \"${EMAIL}\""
   cd ${SRC_NAME}
-  ./acme.sh --install --nocron --home ${ACME_BIN_PATH} --cert-home ${ACME_CRT_PATH} ${emailpara}
+  ./acme.sh --install --nocron ${emailpara} \
+    --home ${ACME_BIN_PATH} \
+    --config-home ${ACME_CONF_PATH} \
+    --cert-home ${ACME_CRT_PATH}
   echo 'done install_acme'
   rm -rf ${TEMP_PATH}/{${SRC_NAME},${SRC_TAR_NAME}}
+  echo "It is recommended to add \`. ${ACME_BIN_PATH}/acme.sh.env\` to the .bashrc file"
   return 0
 }
 
 register_account() {
   echo 'begin register email'
   cd ${ACME_BIN_PATH}
-  ./acme.sh --register-account -m "${EMAIL}"
+  ./acme.sh --config-home ${ACME_CONF_PATH} --register-account -m "${EMAIL}"
   if [ $? -ne 0 ]; then
     echo 'register_account failed!!'
     return 1
@@ -114,14 +138,18 @@ register_account() {
 
 generate_cert() {
   echo 'begin generate_cert'
-  cd ${ACME_BIN_PATH}
-  source acme.sh.env
   echo 'begin updating default cert by acme.sh tool'
-  ./acme.sh --force --log --issue --dns ${DNS} --dnssleep ${DNS_SLEEP} -d "${DOMAIN}" -d "*.${DOMAIN}"
-  #   --cert-file ${ACME_CRT_PATH}/cert.pem \
-  #   --key-file ${ACME_CRT_PATH}/privkey.pem \
-  #   --ca-file ${ACME_CRT_PATH}/chain.pem \
-  #   --fullchain-file ${ACME_CRT_PATH}/fullchain.pem
+  cd ${ACME_BIN_PATH}
+  ./acme.sh --force --log --issue \
+    --dnssleep ${DNS_SLEEP} \
+    --config-home ${ACME_CONF_PATH} \
+    --cert-home ${ACME_CRT_PATH} \
+    --dns ${DNS} \
+    -d "${DOMAIN}" -d "*.${DOMAIN}"
+  #  --cert-file ${ACME_CRT_PATH}/cert.pem \
+  #  --key-file ${ACME_CRT_PATH}/privkey.pem \
+  #  --ca-file ${ACME_CRT_PATH}/chain.pem \
+  #  --fullchain-file ${ACME_CRT_PATH}/fullchain.pem
   if [ $? -eq 0 ] && [ -s ${ACME_CRT_PATH}/${DOMAIN}_ecc/ca.cer ]; then
     echo 'done generate_cert'
     return 0
@@ -211,7 +239,7 @@ reload_webservice() {
 revert_cert() {
   echo 'begin revert_cert'
   BACKUP_PATH=${BASE_ROOT}/backup/$1
-  if [ -z "$1" ]; then
+  if [ -z $command ]; then
     BACKUP_PATH=$(cat ${BASE_ROOT}/backup/latest)
   fi
   if [ ! -d "${BACKUP_PATH}" ]; then
@@ -226,25 +254,82 @@ revert_cert() {
   echo 'done revert_cert'
 }
 
-case "$1" in
+show_help() {
+  echo "Usage: ${this_script} [options] <command>"
+  echo "The following commands are available:"
+  echo "  config         edit config file"
+  echo "  setup          install acme.sh and register account"
+  echo "  update         update certificate & service"
+  echo ""
+  echo "Some more advanced commands:"
+  echo "  uptools        update acme.sh"
+  echo "  backup_cert    backup certificate"
+  echo "  update_cert    update certificate"
+  echo "  update_service update service"
+  echo "  revert         revert certificate"
+  echo ""
+  echo "The following options are available:"
+  echo "  -c|--config    config directory path"
+}
+
+OPTIONS="c:"
+LONGOPTS="config:"
+this_script="$0"
+command=""
+config_dir=""
+PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@")
+if [ $? -ne 0 ]; then
+  exit 1
+fi
+eval set -- "$PARSED"
+while true; do
+  case "$1" in
+  -c|--config)
+    config_dir="$2"
+    shift 2
+    ;;
+  --)
+    shift
+    command="$1"
+    paras="$@"
+    break
+    ;;
+  *)
+    echo "Internal error!"
+    exit 1
+    ;;
+  esac
+done
+
+has_config=false
+set_config
+cd ${ACME_BIN_PATH}
+. acme.sh.env
+
+case "$command" in
 config)
-  echo "------ config ------"
+  echo "------ edit config ------"
   edit_config
   ;;
 
 setup)
   echo "------ setup ------"
-  if $has_config; then
-    install_acme
+  install_acme
+  if [ "$has_config" = "true" ]; then
     register_account
   else
-    edit_config
+    echo "config file not found, pls run: ${this_script} config -c <config_directory>"
   fi
   ;;
 
 uptools)
   echo "------ update script ------"
   install_acme
+  ;;
+
+register)
+  echo "------ register account ------"
+  register_account
   ;;
 
 backup_cert)
@@ -272,20 +357,13 @@ update)
   reload_webservice
   ;;
 
-register)
-  echo "------ register account ------"
-  register_account
-  ;;
-
 revert)
   echo "------ revert ------"
-  revert_cert $2
+  revert_cert $2{paras}
   ;;
 
 *)
-  echo "Usage: $0 {setup|update}"
-  echo or
-  echo "Usage: $0 {config|uptools|register|backup_cert|update_cert|update_service|revert}"
+  show_help
   exit 1
   ;;
 esac
