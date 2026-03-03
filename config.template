@@ -7,36 +7,55 @@ export SYNCTHING_API_KEY=InsertYourAPIKeyHere
 # 域名所有者电子邮件
 export EMAIL=your@email.name
 
-# ZeroSSL 的凭证，通常不需要
-# export ZEROSSL_KEY="your_api_key"
-# export EAB_KID='your eab kid'
-# export EAB_HMAC_KEY='your eab hmac key'
+# 免费CA商
+# - letsencrypt
+# - zerossl
+#     ZeroSSL 可能需要以下凭证
+#     export ZEROSSL_KEY="your_api_key"
+#     export EAB_KID='your eab kid'
+#     export EAB_HMAC_KEY='your eab hmac key'
+# - buypass
+# - google
+# - ssl.com
+export SERVER="letsencrypt"
 
 # 你主域名，如 baidu.com sina.com.cn 等
 export DOMAIN=your_domain
-
-# DNS类型，根据域名服务商而定
-export DNS=dns_xxx
 
 # DNS API 生效等待时间 值(单位：秒)
 # 某些域名服务商的API生效时间较大，需要将这个值加大(比如900)
 export DNS_SLEEP=120
 
-# 阿里云 DNS=dns_ali
-export Ali_Key="LTqIA87hOKdjevsf5"
-export Ali_Secret="0p5EYueFNq501xnCPzKNbx6K51qPH2"
+# DNS类型，根据域名服务商而定
+# 下方 export DNS=dns_xxx 只使用其一
 
-# Dnspod DNS=dns_dp
-export DP_Id="1234"
-export DP_Key="sADDsdasdgdsf"
+# Cloudflare
+# export DNS=dns_cf
+export CF_Token="你的 Cloudflare API Token"
+# 或者使用全局 API Key（不太推荐，Token 更安全）
+# export CF_Key="你的 Cloudflare Global API Key"
+# export CF_Email="你的 Cloudflare 登录邮箱"
 
-# Godaddy DNS=dns_gd
-export GD_Key="sdfsdfsdfljlbjkljlkjsdfoiwje"
-export GD_Secret="asdfsdfsfsdfsdfdfsdf"
+# Godaddy
+# export DNS=dns_gd
+export GD_Key="Godaddy key"
+export GD_Secret="Godaddy secret"
 
-# AWS DNS=dns_aws
-export AWS_ACCESS_KEY_ID="sdfsdfsdfljlbjkljlkjsdfoiwje"
-export AWS_SECRET_ACCESS_KEY="xxxxxxx"
+# 阿里云
+# export DNS=dns_ali
+export Ali_Key="阿里云 Key"
+export Ali_Secret="阿里云 Secret"
 
-# Linode DNS=dns_linode
-export LINODE_API_KEY="xxxxxxxx"
+# Dnspod
+# export DNS=dns_dp
+export DP_Id="Dnspod id"
+export DP_Key="Dnspod key"
+
+# AWS
+# export DNS=dns_aws
+export AWS_ACCESS_KEY_ID="AWS Access Key ID"
+export AWS_SECRET_ACCESS_KEY="AWS Secret Access Key"
+
+# Linode
+# export DNS=dns_linode
+export LINODE_API_KEY="Linode API Key"

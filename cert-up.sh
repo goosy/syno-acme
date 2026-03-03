@@ -112,9 +112,8 @@ install_acme() {
   #fi
   #SRC_NAME=acme.sh
   echo 'begin installing acme.sh tool...'
-  emailpara="--accountemail \"${EMAIL}\""
   cd ${SRC_NAME}
-  ./acme.sh --install --nocron ${emailpara} \
+  ./acme.sh --install --nocron --accountemail "${EMAIL}" \
     --home ${ACME_BIN_PATH} \
     --config-home ${ACME_CONF_PATH} \
     --cert-home ${ACME_CRT_PATH}
@@ -127,7 +126,7 @@ install_acme() {
 register_account() {
   echo 'begin register email'
   cd ${ACME_BIN_PATH}
-  ./acme.sh --config-home ${ACME_CONF_PATH} --register-account -m "${EMAIL}"
+  ./acme.sh --config-home ${ACME_CONF_PATH} --server "${SERVER}" --register-account -m "${EMAIL}"
   if [ $? -ne 0 ]; then
     echo 'register_account failed!!'
     return 1
@@ -141,6 +140,7 @@ generate_cert() {
   echo 'begin updating default cert by acme.sh tool'
   cd ${ACME_BIN_PATH}
   ./acme.sh --force --log --issue \
+    --server "${SERVER}" \
     --dnssleep ${DNS_SLEEP} \
     --config-home ${ACME_CONF_PATH} \
     --cert-home ${ACME_CRT_PATH} \
@@ -256,13 +256,15 @@ revert_cert() {
 
 show_help() {
   echo "Usage: ${this_script} [options] <command>"
-  echo "The following commands are available:"
+  echo "The following commands are mainly used"
   echo "  config         edit config file"
   echo "  setup          install acme.sh and register account"
   echo "  update         update certificate & service"
+  echo "  help           show help message"
   echo ""
-  echo "Some more advanced commands:"
+  echo "Some more advanced commands"
   echo "  uptools        update acme.sh"
+  echo "  register       register account"
   echo "  backup_cert    backup certificate"
   echo "  update_cert    update certificate"
   echo "  update_service update service"

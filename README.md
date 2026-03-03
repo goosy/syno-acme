@@ -5,7 +5,7 @@
 本脚本 fork 自 [andyzhshg/syno-acme](https://github.com/andyzhshg/syno-acme)，在它的基础上：
 
 - 将下载工具和更新证书分开
-- 支持自动下载最新版本的 acme.sh ，不再依赖 syno-acme 本身来更新
+- 支持自动下载最新版本的 acme.sh
 - 自动提示输入 sudo 密码
 - 不再使用 python，完全用shell实现
 - 支持syncthing

@@ -1,0 +1,14 @@
+# 设置所有文本文件使用 LF
+* text=auto eol=lf
+
+# 针对特定文件类型设置
+*.js text eol=lf
+*.ts text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.sh text eol=lf
+
+# 二进制文件不进行转换
+*.png binary
+*.jpg binary
+*.ico binary
