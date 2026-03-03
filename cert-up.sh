@@ -361,7 +361,7 @@ update)
 
 revert)
   echo "------ revert ------"
-  revert_cert $2{paras}
+  revert_cert ${paras}
   ;;
 
 *)
