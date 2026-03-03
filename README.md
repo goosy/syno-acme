@@ -36,9 +36,10 @@ chmod 700 ./cert-up.sh
 
 # 4. 更新证书及服务
 ./cert-up.sh update
-# 该命令相当于以下2个命令逐步执行。
+# 该命令相当于以下3个命令逐步执行。
 # 4.1 更新证书 `./cert-up.sh update_cert`
-# 4.2 更新NAS对应服务 `./cert-up.sh update_service`
+# 4.2 应用新证书 `./cert-up.sh apply_cert`
+# 4.3 重启NAS服务 `./cert-up.sh reload`
 
 # 1至4.1可在无墙的远程机上进行，远程机获得证书
 # 则需要在本地NAS上
@@ -69,7 +70,7 @@ chmod 700 ./cert-up.sh
 
 ### 2 证书更新部分在远程主机执行
 
-这种办法，要求有一个网络顺畅的远程主机。但NAS端无法实现自动脚本。
+这种办法，要求有一个网络顺畅的远程主机。缺点是 NAS 端无法实现自动脚本。
 
 远程主机：
 
@@ -80,4 +81,4 @@ chmod 700 ./cert-up.sh
 
 - 本地NAS初次安装执行 1, 2（其中2仅填写是否有syncthing）
 - 将远程的证书目录复制本地NAS对应目录中 (~/certificates/)
-- 本地NAS更新服务，执行 4.2
+- 本地NAS更新服务，执行 4.2 4.3

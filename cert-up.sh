@@ -159,13 +159,13 @@ generate_cert() {
   fi
 }
 
-update_service() {
-  echo 'begin update_service'
+apply_cert() {
+  echo 'begin apply_cert'
 
-  CRT_PATH_NAME=$(sudo cat ${ARCHIEV_PATH}/DEFAULT)
+  local CRT_PATH_NAME=$(sudo cat ${ARCHIEV_PATH}/DEFAULT)
   CRT_PATH=${ARCHIEV_PATH}/${CRT_PATH_NAME}
-  services=()
-  info=$(sudo cat "$INFO_FILE_PATH")
+  local services=()
+  local info=$(sudo cat "$INFO_FILE_PATH")
   if [ -z "$info" ]; then
     echo "Failed to read file: $INFO_FILE_PATH"
     exit 1
@@ -183,20 +183,21 @@ update_service() {
     sudo cp -v ${ACME_CRT_PATH}/${DOMAIN}_ecc/${DOMAIN}.cer ${CRT_PATH}/cert.pem
     sudo cp -v ${ACME_CRT_PATH}/${DOMAIN}_ecc/${DOMAIN}.key ${CRT_PATH}/privkey.pem
     for service in "${services[@]}"; do
-      display_name=$(echo "$service" | base64 --decode | jq -r '.display_name')
-      isPkg=$(echo "$service" | base64 --decode | jq -r '.isPkg')
-      subscriber=$(echo "$service" | base64 --decode | jq -r '.subscriber')
-      service_name=$(echo "$service" | base64 --decode | jq -r '.service')
+      local display_name=$(echo "$service" | base64 --decode | jq -r '.display_name')
+      local isPkg=$(echo "$service" | base64 --decode | jq -r '.isPkg')
+      local subscriber=$(echo "$service" | base64 --decode | jq -r '.subscriber')
+      local service_name=$(echo "$service" | base64 --decode | jq -r '.service')
 
       echo "Copy cert for $display_name"
+      local CP_TO_DIR
       if [[ $isPkg == true ]]; then
         CP_TO_DIR="${PKG_CRT_BASE_PATH}/${subscriber}/${service_name}"
       else
         CP_TO_DIR="${CRT_BASE_PATH}/${subscriber}/${service_name}"
       fi
       for f in "${CERT_FILES[@]}"; do
-        src="$CRT_PATH/$f"
-        des="$CP_TO_DIR/$f"
+        local src="$CRT_PATH/$f"
+        local des="$CP_TO_DIR/$f"
         if [[ -e "$des" ]]; then
           sudo rm -fr "$des"
         fi
@@ -212,7 +213,7 @@ update_service() {
       sudo chown ${SYNCTHING_USER}:${SYNCTHING_GROUP} ${SYNCTHING_PATH}/https-cert.pem
       sudo chown ${SYNCTHING_USER}:${SYNCTHING_GROUP} ${SYNCTHING_PATH}/https-key.pem
     fi
-    echo 'done update_service'
+    echo 'done apply_cert'
   else
     echo "no cert files, pls run: $0 generate_cert"
   fi
@@ -267,7 +268,8 @@ show_help() {
   echo "  register       register account"
   echo "  backup_cert    backup certificate"
   echo "  update_cert    update certificate"
-  echo "  update_service update service"
+  echo "  apply_cert     apply new certificate"
+  echo "  reload         reload webservice to apply new cert"
   echo "  revert         revert certificate"
   echo ""
   echo "The following options are available:"
@@ -345,9 +347,13 @@ update_cert)
   generate_cert
   ;;
 
-update_service)
+apply_cert)
+  echo "------ apply certificate ------"
+  apply_cert
+  ;;
+
+reload)
   echo "------ update service ------"
-  update_service
   reload_webservice
   ;;
 
@@ -355,7 +361,7 @@ update)
   echo '------ update certificate & service ------'
   backup_cert
   generate_cert
-  update_service
+  apply_cert
   reload_webservice
   ;;
 
