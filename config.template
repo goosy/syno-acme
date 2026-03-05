@@ -1,8 +1,8 @@
-# 有无 syncthing 需要更新证书
-# 有的话 export SYNCTHING=true
+# 如有 syncthing 需要更新证书，要设置 export SYNCTHING=true
 export SYNCTHING=false
-# 有的话，给出 API_KEY
-export SYNCTHING_API_KEY=InsertYourAPIKeyHere
+# SYNCTHING_DIR 为 syncthing 的配置文件路径
+# 可以省略，脚本会自动查找，但 NAS 全盘扫描可能会很慢
+export SYNCTHING_DIR="/volume1/@appdata/syncthing"
 
 # 域名所有者电子邮件
 export EMAIL=your@email.name
