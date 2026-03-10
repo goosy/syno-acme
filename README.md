@@ -36,11 +36,12 @@ chmod 700 ./cert-up.sh
 
 # 4. 更新证书及服务
 ./cert-up.sh update
-# 该命令相当于以下3个命令逐步执行。
+# 该命令相当于以下5个命令逐步执行。
 # 4.1 更新证书 `./cert-up.sh update_cert`
 # 4.2 应用新证书 `./cert-up.sh apply_cert`
 # 4.3 重启NAS服务 `./cert-up.sh reload`
 # 4.4 更新 syncthing 证书并重启服务 `./cert-up.sh syncthing`
+# 4.5 更新 jellyfin 证书并重启服务 `./cert-up.sh jellyfin`
 
 # 1至4.1可在无墙的远程机上进行，远程机获得证书
 # 则需要在本地NAS上
@@ -82,4 +83,4 @@ chmod 700 ./cert-up.sh
 
 - 本地NAS初次安装执行 1, 2（其中2仅填写是否有syncthing）
 - 将远程的证书目录复制本地NAS对应目录中 (~/certificates/)
-- 本地NAS更新服务，执行 4.2 4.3 4.4
+- 本地NAS更新服务，执行 4.2 4.3 4.4 4.5

@@ -308,6 +308,147 @@ apply_syncthing_cert() {
   echo 'done apply_syncthing_cert'
 }
 
+# Jellyfin 常见目录的位置映射
+JELLYFIN_SEARCH_DIRS=(
+  "/volume1/@appdata/jellyfin"
+  "/volume1/docker/jellyfin"
+  "/volume2/docker/jellyfin"
+  "/volume3/docker/jellyfin"
+)
+
+extract_jellyfin_config_vars() {
+  local network_xml="$1"
+  local config_dir=$(dirname "$network_xml")
+  local jellyfin_dir=$(dirname "$config_dir")
+  if
+    [[ "$(basename "$config_dir")" == "config" ]] &&
+    [[ "$(basename "$jellyfin_dir")" == "config" ]]
+  then
+    jellyfin_dir=$(dirname "$jellyfin_dir")
+  fi
+
+  JELLYFIN_CERT_USER=$(sudo stat -c '%U' "$jellyfin_dir")
+  JELLYFIN_CERT_GROUP=$(sudo stat -c '%G' "$jellyfin_dir")
+
+  # 从 network.xml 中读取证书路径与密码
+  if sudo test -f "$network_xml"; then
+    JELLYFIN_CERT_PATH=$(sudo grep -o '<CertificatePath>[^<]*</CertificatePath>' "$network_xml" \
+      | sed 's/<[^>]*>//g')
+    JELLYFIN_CERT_PASSWORD=$(sudo grep -o '<CertificatePassword>[^<]*</CertificatePassword>' "$network_xml" \
+      | sed 's/<[^>]*>//g')
+  fi
+
+  # 如果配置中没有指定证书路径，则使用默认值
+  if [[ -z "$JELLYFIN_CERT_PATH" ]]; then
+    JELLYFIN_CERT_PATH="${jellyfin_dir}/certificate.p12"
+    echo "[INFO] CertificatePath not set in network.xml, will use default: $JELLYFIN_CERT_PATH"
+  fi
+
+  # 判断重启方式：套件 or Docker
+  JELLYFIN_RESTART_MODE=""
+  if synopkg status jellyfin &>/dev/null; then
+    JELLYFIN_RESTART_MODE="synopkg"
+    JELLYFIN_CONTAINER_NAME=""
+  else
+    # 尝试查找运行中的 jellyfin 容器
+    local container
+    container=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -i jellyfin | head -n 1)
+    if [[ -n "$container" ]]; then
+      JELLYFIN_RESTART_MODE="docker"
+      JELLYFIN_CONTAINER_NAME="$container"
+    fi
+  fi
+}
+
+find_jellyfin_config() {
+  # 用户通过配置文件指定了 JELLYFIN_DIR
+  if [ -n "$JELLYFIN_DIR" ] && ! sudo test -d "$JELLYFIN_DIR"; then
+    echo "[ERR] JELLYFIN_DIR: $JELLYFIN_DIR not found, skipping"
+    return 1
+  fi
+  # 如有 JELLYFIN_DIR 设置，优先使用，并尝试在2种config子路径中查找 network.xml
+  for path in ${JELLYFIN_DIR:+"$JELLYFIN_DIR"} "${JELLYFIN_SEARCH_DIRS[@]}"; do
+    for subpath in "config/network.xml" "config/config/network.xml"; do
+      if sudo test -f "$path/$subpath"; then
+        extract_jellyfin_config_vars "$path/$subpath"
+        return 0
+      fi
+    done
+  done
+
+  echo "[INFO] searching for Jellyfin network.xml..." >&2
+  local network_xml=$(sudo find / -name "network.xml" 2>/dev/null \
+      | xargs sudo grep -l "<CertificatePath>\|<RequireHttps>" 2>/dev/null \
+      | head -n 1)
+
+  if [[ -z "$network_xml" ]]; then
+    echo "[WRN] Jellyfin network.xml not found" >&2
+    return 1
+  fi
+
+  extract_jellyfin_config_vars "$network_xml"
+  return 0
+}
+
+apply_jellyfin_cert() {
+  [ "$JELLYFIN" = true ] || return 0
+  echo 'begin apply_jellyfin_cert'
+
+  # 首次调用，定位配置
+  find_jellyfin_config || {
+    echo "[ERR] cannot locate Jellyfin config, skipping"
+    return 1
+  }
+
+  local src_cert="${ACME_CRT_PATH}/${DOMAIN}_ecc/${DOMAIN}.cer"
+  local src_key="${ACME_CRT_PATH}/${DOMAIN}_ecc/${DOMAIN}.key"
+
+  if ! sudo test -f "$src_cert" || ! sudo test -f "$src_key"; then
+    echo "[ERR] Source cert/key not found, run generate_cert first"
+    return 1
+  fi
+
+  # PEM → PKCS#12 转换
+  # Jellyfin 要求 PKCS#12 格式；密码可为空字符串（-passout pass:）
+  local pfx_password="${JELLYFIN_CERT_PASSWORD:-}"
+  local tmp_pfx
+  tmp_pfx=$(mktemp /tmp/jellyfin_cert_XXXXXX.p12)
+
+  echo "Converting PEM to PKCS#12 for Jellyfin (path: ${JELLYFIN_CERT_PATH})"
+  if ! openssl pkcs12 -export \
+    -inkey "$src_key" \
+    -in "$src_cert" \
+    -certfile "${ACME_CRT_PATH}/${DOMAIN}_ecc/fullchain.cer" \
+    -out "$tmp_pfx" \
+    -passout "pass:${pfx_password}"
+  then
+    echo "[ERR] openssl pkcs12 conversion failed"
+    rm -f "$tmp_pfx"
+    return 1
+  fi
+
+  sudo mv "$tmp_pfx" "$JELLYFIN_CERT_PATH"
+  sudo chmod 640 "$JELLYFIN_CERT_PATH"
+  sudo chown "${JELLYFIN_CERT_USER}:${JELLYFIN_CERT_GROUP}" "$JELLYFIN_CERT_PATH"
+
+  # 重启服务
+  case "$JELLYFIN_RESTART_MODE" in
+    synopkg)
+      echo "Restarting Jellyfin via synopkg..."
+      sudo synopkg restart jellyfin
+      ;;
+    docker)
+      echo "Restarting Jellyfin container: ${JELLYFIN_CONTAINER_NAME}..."
+      docker restart "$JELLYFIN_CONTAINER_NAME"
+      ;;
+    *)
+      echo "[WRN] Cannot determine Jellyfin restart method; please restart manually"
+      ;;
+  esac
+
+  echo 'done apply_jellyfin_cert'
+}
+
 revert_cert() {
   echo 'begin revert_cert'
   BACKUP_PATH=${BASE_ROOT}/backup/$1
@@ -342,6 +483,7 @@ show_help() {
   echo "  apply_cert     apply new certificate"
   echo "  reload         reload webservice to apply new cert"
   echo "  syncthing      apply Syncthing certificate and restart Syncthing"
+  echo "  jellyfin       apply Jellyfin certificate and restart Jellyfin"
   echo "  revert         revert certificate"
   echo ""
   echo "The following options are available:"
@@ -434,6 +576,11 @@ syncthing)
   apply_syncthing_cert
   ;;
 
+jellyfin)
+  echo "------ apply jellyfin certificate ------"
+  apply_jellyfin_cert
+  ;;
+
 update)
   echo '------ update certificate & service ------'
   backup_cert
@@ -441,6 +588,7 @@ update)
   apply_cert
   reload_webservice
   apply_syncthing_cert
+  apply_jellyfin_cert
   ;;
 
 revert)

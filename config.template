@@ -4,6 +4,12 @@ export SYNCTHING=false
 # 可以省略，脚本会自动查找，但 NAS 全盘扫描可能会很慢
 export SYNCTHING_DIR="/volume1/@appdata/syncthing"
 
+# 如有 jellyfin 需要更新证书，要设置 export JELLYFIN=true
+export JELLYFIN=false
+# JELLYFIN_DIR 为 jellyfin 的配置文件路径
+# 可以省略，脚本会自动查找，但 NAS 全盘扫描可能会很慢
+export JELLYFIN_DIR="/volume1/@appdata/jellyfin"
+
 # 域名所有者电子邮件
 export EMAIL=your@email.name
 
