@@ -1,5 +1,7 @@
 #!/bin/bash
 
+SCRIPT_VERSION="1.0.0"
+
 CERT_FILES=(
   'cert.pem'
   'privkey.pem'
@@ -34,7 +36,7 @@ if [ ! -d ${ACME_CRT_PATH} ]; then
 fi
 
 # List of commands that do not require a configuration file to run.
-NO_CONFIG_CMDS="gettools help"
+NO_CONFIG_CMDS="gettools help showversion"
 
 set_config() {
   # For commands that do not depend on a configuration file, return directly.
@@ -525,7 +527,20 @@ apply_jellyfin_cert() {
 }
 
 # ──────────────────────────────────────────────
-# help
+# Version
+# ──────────────────────────────────────────────
+
+showversion() {
+  echo "cert-up.sh version ${SCRIPT_VERSION}"
+  if [ -f "${ACME_BIN_PATH}/acme.sh" ]; then
+    echo "acme.sh version $("${ACME_BIN_PATH}/acme.sh" --version 2>&1 | head -1)"
+  else
+    echo "acme.sh: not installed"
+  fi
+}
+
+# ──────────────────────────────────────────────
+# Help
 # ──────────────────────────────────────────────
 
 show_help() {
@@ -555,6 +570,7 @@ show_help() {
   echo ""
   echo "Options:"
   echo "  -e, --edit            Force open editor when setting up"
+  echo "  -V, --version         Show version information"
   echo ""
 }
 
@@ -562,8 +578,8 @@ show_help() {
 # Parse command line arguments
 # ──────────────────────────────────────────────
 
-OPTIONS="e"
-LONGOPTS="edit"
+OPTIONS="eV"
+LONGOPTS="edit,version"
 this_script="$0"
 command=""
 config_dir=""
@@ -580,6 +596,10 @@ while true; do
   -e|--edit)
     require_edit=true
     shift
+    ;;
+  -V|--version)
+    command="showversion"
+    break
     ;;
   --)
     shift
@@ -607,6 +627,10 @@ fi
 # ──────────────────────────────────────────────
 
 case "$command" in
+
+showversion)
+  showversion
+  ;;
 
 gettools)
   echo "------ install/update acme.sh ------"
