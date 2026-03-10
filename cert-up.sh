@@ -26,12 +26,6 @@ ARCHIEV_PATH="${CRT_BASE_PATH}/_archive"
 INFO_FILE_PATH="${ARCHIEV_PATH}/INFO"
 DNS_SLEEP=60
 
-SYNCTHING_PATH=/volume1/@appdata/syncthing
-# Before DSM 7.0, use the following instead:
-#SYNCTHING_PATH=/var/packages/syncthing/target/var
-SYNCTHING_USER=sc-syncthing
-SYNCTHING_GROUP=synocommunity
-
 if [ ! -d ${ACME_BIN_PATH} ]; then
   mkdir ${ACME_BIN_PATH}
 fi
@@ -204,15 +198,6 @@ apply_cert() {
         sudo cp -v "$src" "$des" || echo "[WRN] copy from $src to $des fail"
       done
     done
-    if [ "$SYNCTHING" = true ]; then
-      echo 'Copy cert for Syncthing'
-      sudo cp -v --preserve=timestamps ${CRT_PATH}/cert.pem ${SYNCTHING_PATH}/https-cert.pem
-      sudo cp -v --preserve=timestamps ${CRT_PATH}/privkey.pem ${SYNCTHING_PATH}/https-key.pem
-      sudo chmod 664 ${SYNCTHING_PATH}/https-cert.pem
-      sudo chmod 600 ${SYNCTHING_PATH}/https-key.pem
-      sudo chown ${SYNCTHING_USER}:${SYNCTHING_GROUP} ${SYNCTHING_PATH}/https-cert.pem
-      sudo chown ${SYNCTHING_USER}:${SYNCTHING_GROUP} ${SYNCTHING_PATH}/https-key.pem
-    fi
     echo 'done apply_cert'
   else
     echo "no cert files, pls run: $0 generate_cert"
@@ -221,7 +206,7 @@ apply_cert() {
 
 reload_webservice() {
   echo 'begin reload_webservice'
-
+  # @todo:
   # Not all Synology NAS webservice are the same.
   # Write code according to your configuration.
   #echo 'reloading new cert...'
@@ -231,10 +216,96 @@ reload_webservice() {
   #start pkg-apache22
   #reload pkg-apache22
   #echo 'done reload_webservice'
+}
 
-  if [ "$SYNCTHING" = true ]; then
-    curl -k -X POST -H "X-API-Key: ${SYNCTHING_API_KEY}" https://localhost:8384/rest/system/restart
+declare -A SYNCTHING_CONFIG_MAP=(
+    ["/volume1/@appdata/syncthing/config.xml"]="/volume1/@appdata/syncthing"
+    ["/var/packages/syncthing/var/config.xml"]="/var/packages/syncthing/target/var"
+    ["$HOME/.config/syncthing/config.xml"]="$HOME/.config/syncthing"
+    ["/volume1/docker/syncthing/config.xml"]="/volume1/docker/syncthing"
+    ["/volume2/docker/syncthing/config.xml"]="/volume2/docker/syncthing"
+    ["/volume3/docker/syncthing/config.xml"]="/volume3/docker/syncthing"
+)
+
+extract_syncthing_config_vars() {
+    local config_file="$1"
+    SYNCTHING_USER=$(sudo stat -c '%U' "$config_file")
+    SYNCTHING_GROUP=$(sudo stat -c '%G' "$config_file")
+    SYNCTHING_API_KEY=$(sudo grep -o '<apikey>[^<]*</apikey>' "$config_file" \
+        | sed 's/<[^>]*>//g')
+}
+
+find_syncthing_config() {
+    local config_file=""
+
+    for path in "${!SYNCTHING_CONFIG_MAP[@]}"; do
+        if sudo test -f "$path"; then
+            config_file="$path"
+            break
+        fi
+    done
+
+    if [[ -z "$config_file" ]]; then
+        echo "[INFO] searching for Syncthing config.xml..." >&2
+        config_file=$(sudo find / -name "config.xml" 2>/dev/null \
+            | xargs sudo grep -l "<apikey>" 2>/dev/null \
+            | head -n 1)
+        if [[ -n "$config_file" ]]; then
+            SYNCTHING_DIR=$(dirname "$config_file")
+        fi
+    else
+        SYNCTHING_DIR=${SYNCTHING_CONFIG_MAP[$config_file]}
+    fi
+
+    if [[ -z "$config_file" ]]; then
+        echo "[WRN] Syncthing config.xml not found" >&2
+        return 1
+    fi
+
+    extract_syncthing_config_vars "$config_file"
+    return 0
+}
+
+apply_syncthing_cert() {
+  [ "$SYNCTHING" = true ] || return 0
+  echo 'begin apply_syncthing_cert'
+
+  # First call, set all variables
+  if [[ -z "$SYNCTHING_DIR" ]]; then
+    find_syncthing_config || {
+      echo "[ERR] cannot locate Syncthing config, skipping"
+      return 1
+    }
+  else
+    # User has set SYNCTHING_DIR, verify if the directory exists
+    if ! sudo test -d "$SYNCTHING_DIR"; then
+      echo "[ERR] SYNCTHING_DIR: $SYNCTHING_DIR not found, skipping"
+      return 1
+    fi
+    local config_file="$SYNCTHING_DIR/config.xml"
+    if sudo test -f "$config_file"; then
+      extract_syncthing_config_vars "$config_file"
+    else
+      echo "[ERR] config.xml not found in $SYNCTHING_DIR, cannot determine USER/GROUP"
+      return 1
+    fi
   fi
+
+  echo "Copy cert for Syncthing (path: ${SYNCTHING_DIR})"
+  sudo cp -v ${ACME_CRT_PATH}/${DOMAIN}_ecc/${DOMAIN}.cer ${SYNCTHING_DIR}/https-cert.pem
+  sudo cp -v ${ACME_CRT_PATH}/${DOMAIN}_ecc/${DOMAIN}.key ${SYNCTHING_DIR}/https-key.pem
+  sudo chmod 664 ${SYNCTHING_DIR}/https-cert.pem
+  sudo chmod 600 ${SYNCTHING_DIR}/https-key.pem
+  sudo chown ${SYNCTHING_USER}:${SYNCTHING_GROUP} ${SYNCTHING_DIR}/https-cert.pem
+  sudo chown ${SYNCTHING_USER}:${SYNCTHING_GROUP} ${SYNCTHING_DIR}/https-key.pem
+
+  if [[ -n "${SYNCTHING_API_KEY}" ]]; then
+    curl -k -X POST -H "X-API-Key: ${SYNCTHING_API_KEY}" https://localhost:8384/rest/system/restart
+  else
+    echo "[WRN] SYNCTHING_API_KEY not found, skipping restart"
+  fi
+
+  echo 'done apply_syncthing_cert'
 }
 
 revert_cert() {
@@ -270,6 +341,7 @@ show_help() {
   echo "  update_cert    update certificate"
   echo "  apply_cert     apply new certificate"
   echo "  reload         reload webservice to apply new cert"
+  echo "  syncthing      apply Syncthing certificate and restart Syncthing"
   echo "  revert         revert certificate"
   echo ""
   echo "The following options are available:"
@@ -357,12 +429,18 @@ reload)
   reload_webservice
   ;;
 
+syncthing)
+  echo "------ apply syncthing certificate ------"
+  apply_syncthing_cert
+  ;;
+
 update)
   echo '------ update certificate & service ------'
   backup_cert
   generate_cert
   apply_cert
   reload_webservice
+  apply_syncthing_cert
   ;;
 
 revert)
